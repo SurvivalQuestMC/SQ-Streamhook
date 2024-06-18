@@ -1,12 +1,14 @@
 use reqwest::{header, Error};
 use serde::Deserialize;
+use sqlx::{sqlite::SqlitePool, Executor};
 use std::env;
 use tokio::task::spawn_blocking;
 
 const CLIENT_ID: &str = "STREAMHOOK_CLIENT_ID";
 const CLIENT_SECRET: &str = "STREAMHOOK_CLIENT_SECRET";
+const DATABASE: &str = "DATABASE_URL";
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 struct OauthAccessToken {
     access_token: String,
     expires_in: u32,
@@ -21,19 +23,56 @@ fn get_client_info() -> (String, String) {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
-    dotenv::from_filename(".env").ok();
+async fn main() -> Result<(), anyhow::Error> {
+    dotenvy::from_filename(".env").ok();
+
+    let pool = SqlitePool::connect(&env::var(DATABASE).unwrap()).await?;
+    let mut conn = pool.acquire().await?;
+
+    conn.execute("CREATE TABLE IF NOT EXISTS streamhooks_auth ( access_token TEXT )")
+        .await?;
+
+    validate_auth_token();
 
     let request = spawn_blocking(move || authenticate_streamhooks().unwrap())
         .await
         .unwrap();
-    let deserialized: OauthAccessToken = serde_json::from_str(&request[..]).unwrap();
-    println!("{:#?}", deserialized);
+
+    println!("Inserting into database!");
+    let id = sqlx::query!(
+        r#"
+INSERT INTO streamhooks_auth ( access_token )
+VALUES ( ?1 )
+        "#,
+        request.access_token
+    )
+    .execute(&mut *conn)
+    .await?
+    .last_insert_rowid();
+
+    println!("Inserted at {id}");
+
+    let queries = sqlx::query!(
+        r#"
+SELECT access_token
+FROM streamhooks_auth
+        "#
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    for query in queries {
+        println!("Key: {}", query.access_token.unwrap());
+    }
 
     Ok(())
 }
 
-fn authenticate_streamhooks() -> Result<String, Error> {
+fn validate_auth_token() {
+    todo!()
+}
+
+fn authenticate_streamhooks() -> Result<OauthAccessToken, Error> {
     let mut headers = header::HeaderMap::new();
     headers.insert(
         "Content-Type",
@@ -57,5 +96,7 @@ fn authenticate_streamhooks() -> Result<String, Error> {
         .send()?
         .text()?;
 
-    Ok(res)
+    let deserialized: OauthAccessToken = serde_json::from_str(&res[..]).unwrap();
+
+    Ok(deserialized)
 }
