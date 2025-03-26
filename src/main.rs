@@ -1,12 +1,11 @@
 use reqwest::{header, Error};
 use serde::Deserialize;
-use sqlx::sqlite::SqlitePool;
+use sqlx::{sqlite::SqliteConnectOptions, Connection, Row, SqliteConnection};
 use std::env;
 use tokio::task::spawn_blocking;
 
 const CLIENT_ID: &str = "STREAMHOOK_CLIENT_ID";
 const CLIENT_SECRET: &str = "STREAMHOOK_CLIENT_SECRET";
-const DATABASE: &str = "DATABASE_URL";
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
 struct OauthAccessToken {
@@ -25,22 +24,26 @@ fn get_client_info() -> (String, String) {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     dotenvy::from_filename(".env").ok();
+    
+    let opts = SqliteConnectOptions::new()
+        .filename("streamhooks.db")
+        .create_if_missing(true);
 
-    let pool = SqlitePool::connect(&env::var(DATABASE).unwrap()).await?;
-    sqlx::migrate!().run(&pool).await?;
+    let mut conn = SqliteConnection::connect_with(&opts).await?;
+    sqlx::migrate!().run(&mut conn).await?;
 
-    if validate_auth_token(&pool).await.unwrap() != true {
+    if validate_auth_token(&mut conn).await.unwrap() != true {
         let request = spawn_blocking(move || authenticate_streamhooks().unwrap())
             .await
             .unwrap();
-        store_auth_token(&pool, request.access_token).await;
+        store_auth_token(&mut conn, request.access_token).await;
     }
 
     Ok(())
 }
 
-async fn validate_auth_token(pool: &sqlx::SqlitePool) -> Result<bool, Error> {
-    let mut auth_token = retrieve_auth_token(pool).await;
+async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> Result<bool, Error> {
+    let mut auth_token = retrieve_auth_token(conn).await;
     match auth_token {
         None => return Ok(false),
         Some(token) => auth_token = Some(token),
@@ -76,29 +79,29 @@ async fn validate_auth_token(pool: &sqlx::SqlitePool) -> Result<bool, Error> {
     }
 }
 
-async fn retrieve_auth_token(pool: &sqlx::SqlitePool) -> Option<String> {
-    let query = sqlx::query!(
+async fn retrieve_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
+    let query = sqlx::query(
         r#"
 SELECT access_token
 FROM streamhooks_auth
 LIMIT 1
         "#
     )
-    .fetch_optional(pool)
+    .fetch_optional(conn)
     .await
     .unwrap();
 
     match query {
         None => return None,
-        Some(token) => return token.access_token,
+        Some(row) => return row.try_get("access_token").unwrap(),
     };
 }
 
-async fn store_auth_token(pool: &sqlx::SqlitePool, auth_token: String) {
-    let mut conn = pool.acquire().await.unwrap();
+async fn store_auth_token(conn: &mut sqlx::SqliteConnection, auth_token: String) {
+    //let mut conn = conn.acquire().await.unwrap();
 
     println!("Clearing previous key..");
-    sqlx::query!(
+    sqlx::query(
         r#"
 DELETE FROM streamhooks_auth
         "#
@@ -109,13 +112,13 @@ DELETE FROM streamhooks_auth
     println!("Previous key cleared!");
 
     println!("Inserting into database!");
-    sqlx::query!(
+    sqlx::query(
         r#"
 INSERT INTO streamhooks_auth ( access_token )
 VALUES ( ?1 )
-        "#,
-        auth_token
+        "#
     )
+    .bind(auth_token)
     .execute(&mut *conn)
     .await
     .unwrap()

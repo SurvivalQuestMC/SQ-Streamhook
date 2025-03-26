@@ -7,4 +7,3 @@ Set environment variables or create a .env file for these variables.
 STREAMHOOK_CLIENT_ID=<Twitch Client Id Here>
 STREAMHOOK_CLIENT_SECRET=<Twitch Client Secret Here>
 ```
-
