@@ -1,7 +1,11 @@
 [package]
-name = "sq-streamhook"
+name = "sq_streamhook"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+name = "sq_streamhook"
+path = "src/lib.rs"
 
 [dependencies]
 dotenvy = "0.15.7"
