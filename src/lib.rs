@@ -1,4 +1,7 @@
-use std::env;
+use std::{
+    env,
+    fmt::Write,
+};
 
 use reqwest::{header, Error};
 use serde::Deserialize;
@@ -22,7 +25,7 @@ pub async fn retrieve_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<St
 SELECT access_token
 FROM streamhooks_auth
 LIMIT 1
-        "#
+        "#,
     )
     .fetch_optional(conn)
     .await
@@ -41,7 +44,7 @@ pub async fn store_auth_token(conn: &mut sqlx::SqliteConnection, auth_token: Str
     sqlx::query(
         r#"
 DELETE FROM streamhooks_auth
-        "#
+        "#,
     )
     .execute(&mut *conn)
     .await
@@ -53,7 +56,7 @@ DELETE FROM streamhooks_auth
         r#"
 INSERT INTO streamhooks_auth ( access_token )
 VALUES ( ?1 )
-        "#
+        "#,
     )
     .bind(auth_token)
     .execute(&mut *conn)
@@ -87,34 +90,32 @@ pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> Result<bo
         None => return Ok(false),
         Some(token) => auth_token = Some(token),
     };
-    
+
     let header_auth_string = format!("OAuth {}", auth_token.unwrap()).parse().unwrap();
 
     println!("Validating Auth Token");
 
     let mut headers = header::HeaderMap::new();
-    headers.insert(
-        "Authorization",
-        header_auth_string,
-    );
+    headers.insert("Authorization", header_auth_string);
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap();
 
-    let res = client.get("https://id.twitch.tv/oauth2/validate")
+    let res = client
+        .get("https://id.twitch.tv/oauth2/validate")
         .headers(headers)
         .send()
         .await?
         .status();
-    
+
     if res.is_success() == true {
         println!("Auth Token is valid!");
-        return Ok(true)
+        return Ok(true);
     } else {
         println!("Auth Token is invalid, generating new token.");
-        return Ok(false)
+        return Ok(false);
     }
 }
 
@@ -148,7 +149,47 @@ pub fn authenticate_streamhooks() -> Result<OauthAccessToken, Error> {
 }
 
 pub fn authenticate_user() -> Result<OauthAccessToken, Error> {
+    let auth_code_path = build_url(Url {
+        protocol: "https".into(),
+        domain: "id.twitch.tv".into(),
+        path: Some("oauth2/authorize".into()),
+        parameters: Some(vec![
+            "?response_type=code".into(),
+            format!("&client_id={}", env::var(CLIENT_ID).unwrap()),
+            "&redirect_uri=http://localhost:3000".into(),
+            "&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot".into(),
+            "&state=randomgohere".into()
+        ])
+    });
+
     println!("Authorize Twitch Account");
-    println!("https://id.twitch.tv/oauth2/authorize?response_type=token&client_id={}&redirect_uri=http://localhost:3000&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot&state=randomhere", env::var(CLIENT_ID).unwrap());
+    println!("{auth_code_path}");
     todo!()
+}
+
+struct Url {
+    protocol: String,
+    domain: String,
+    path: Option<String>,
+    parameters: Option<Vec<String>>,
+}
+
+fn build_url(url: Url) -> String {
+    let protocol = url.protocol;
+    let domain = url.domain;
+    let path = url.path;
+    let parameters = url.parameters;
+
+    let mut url = String::new();
+    write!(&mut url, "{protocol}://{domain}/").unwrap();
+    
+    if let Some(path) = path {
+        write!(&mut url, "{path}").unwrap();
+    }
+    if let Some(parameters) = parameters {
+        for parameter in parameters {
+            write!(&mut url, "{parameter}").unwrap();
+        }
+    }
+    url
 }
