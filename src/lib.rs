@@ -32,14 +32,12 @@ LIMIT 1
     .unwrap();
 
     match query {
-        None => return None,
-        Some(row) => return row.try_get("access_token").unwrap(),
-    };
+        None => None,
+        Some(row) => row.try_get("access_token").unwrap(),
+    }
 }
 
 pub async fn store_auth_token(conn: &mut sqlx::SqliteConnection, auth_token: String) {
-    //let mut conn = conn.acquire().await.unwrap();
-
     println!("Clearing previous key..");
     sqlx::query(
         r#"
@@ -84,39 +82,39 @@ fn get_client_info() -> (String, String) {
     )
 }
 
-pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> Result<bool, Error> {
-    let mut auth_token = retrieve_auth_token(conn).await;
-    match auth_token {
-        None => return Ok(false),
-        Some(token) => auth_token = Some(token),
+pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> Result<(), Error> {
+    let auth_token = retrieve_auth_token(conn).await;
+    if let Some(token) = auth_token {
+        let header_auth_string = format!("OAuth {}", token).parse().unwrap();
+
+        println!("Validating Auth Token");
+
+        let mut headers = header::HeaderMap::new();
+        headers.insert("Authorization", header_auth_string);
+
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+
+        let res = client
+            .get("https://id.twitch.tv/oauth2/validate")
+            .headers(headers)
+            .send()
+            .await?
+            .status();
+
+        if res.is_success() {
+            println!("Auth Token is valid!");
+            return Ok(());
+        };
     };
 
-    let header_auth_string = format!("OAuth {}", auth_token.unwrap()).parse().unwrap();
-
-    println!("Validating Auth Token");
-
-    let mut headers = header::HeaderMap::new();
-    headers.insert("Authorization", header_auth_string);
-
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap();
-
-    let res = client
-        .get("https://id.twitch.tv/oauth2/validate")
-        .headers(headers)
-        .send()
-        .await?
-        .status();
-
-    if res.is_success() == true {
-        println!("Auth Token is valid!");
-        return Ok(true);
-    } else {
         println!("Auth Token is invalid, generating new token.");
-        return Ok(false);
-    }
+        let token = authenticate_streamhooks().unwrap();
+        store_auth_token(conn, token.access_token).await;
+
+        Ok(())
 }
 
 pub fn authenticate_streamhooks() -> Result<OauthAccessToken, Error> {

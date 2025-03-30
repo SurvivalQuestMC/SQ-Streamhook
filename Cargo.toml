@@ -1,7 +1,10 @@
 [package]
 name = "sq_streamhook"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+description = "SurvivalQuest's Streamhook Utility"
+authors = ["RestedWicked <wicked@radiantware.xyz>"]
+readme = "README.md"
 
 [lib]
 name = "sq_streamhook"
@@ -15,3 +18,4 @@ serde = { version = "1.0.203", features = ["derive"]}
 serde_json = "1.0.117"
 tokio = { version = "1", features = ["full"]}
 anyhow = "1.0.86"
+clap = { version = "4.5.34", features = ["color", "derive"] }
