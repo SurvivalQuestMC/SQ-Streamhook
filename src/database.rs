@@ -10,47 +10,61 @@ pub async fn init_database() -> Result<SqliteConnection, anyhow::Error> {
     Ok(conn)
 }
 
-pub async fn retrieve_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
-    let query = sqlx::query(
-        r#"
-SELECT access_token
-FROM streamhooks_auth
-LIMIT 1
-        "#,
-    )
-    .fetch_optional(conn)
-    .await
-    .unwrap();
+pub async fn retrieve_database_value(
+    conn: &mut sqlx::SqliteConnection,
+    column: &str,
+    table: &str,
+) -> Option<String> {
+    let query = format!("SELECT {column} FROM {table} LIMIT 1");
+    let result = sqlx::query(&query).fetch_optional(conn).await.unwrap();
 
-    match query {
+    match result {
         None => None,
-        Some(row) => row.try_get("access_token").unwrap(),
+        Some(row) => row.try_get(column).unwrap(),
     }
 }
 
-pub async fn store_auth_token(conn: &mut sqlx::SqliteConnection, auth_token: String) {
+pub async fn store_database_value(
+    conn: &mut sqlx::SqliteConnection,
+    value: String,
+    column: &str,
+    table: &str,
+) -> anyhow::Result<()> {
+    let query = format!("INSERT INTO {table } ( $2 ) VALUES ( $1 )");
+    sqlx::query(&query)
+        .bind(value)
+        .bind(column)
+        .execute(conn)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn clear_database_table(
+    conn: &mut sqlx::SqliteConnection,
+    table: &str,
+) -> anyhow::Result<()> {
+    let query = format!("DELETE FROM {table}");
+    sqlx::query(&query).bind(table).execute(conn).await?;
+
+    Ok(())
+}
+
+pub async fn retrieve_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
+    retrieve_database_value(conn, "access_token", "streamhooks_auth").await
+}
+
+pub async fn store_auth_token(
+    conn: &mut sqlx::SqliteConnection,
+    auth_token: String,
+) -> anyhow::Result<()> {
     println!("Clearing previous key..");
-    sqlx::query(
-        r#"
-DELETE FROM streamhooks_auth
-        "#,
-    )
-    .execute(&mut *conn)
-    .await
-    .unwrap();
+    clear_database_table(conn, "streamhooks_auth").await?;
     println!("Previous key cleared!");
 
     println!("Inserting into database!");
-    sqlx::query(
-        r#"
-INSERT INTO streamhooks_auth ( access_token )
-VALUES ( ?1 )
-        "#,
-    )
-    .bind(auth_token)
-    .execute(&mut *conn)
-    .await
-    .unwrap()
-    .last_insert_rowid();
+    store_database_value(conn, auth_token, "access_token", "streamhooks_auth").await?;
     println!("Succesfully inserted!");
+
+    Ok(())
 }

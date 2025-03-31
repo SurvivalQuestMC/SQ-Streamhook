@@ -7,7 +7,7 @@ use sq_streamhook::{
 };
 
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     match streamhook_parse_args(args) {
         StreamhookMessage::Stop => (),
@@ -21,10 +21,11 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-async fn streamhook_init() -> Result<(), anyhow::Error> {
+async fn streamhook_init() -> anyhow::Result<()> {
     dotenvy::from_filename(".env").ok();
     let mut conn = init_database().await?;
     validate_auth_token(&mut conn).await?;
+
     Ok(())
 }
 

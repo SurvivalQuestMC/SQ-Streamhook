@@ -22,10 +22,10 @@ fn get_client_info() -> (String, String) {
     )
 }
 
-pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> Result<(), Error> {
+pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
     let auth_token = retrieve_auth_token(conn).await;
     if let Some(token) = auth_token {
-        let header_auth_string = format!("OAuth {}", token).parse().unwrap();
+        let header_auth_string = format!("OAuth {}", token).parse()?;
 
         println!("Validating Auth Token");
 
@@ -52,7 +52,7 @@ pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> Result<()
 
     println!("Auth Token is invalid, generating new token.");
     let token = authenticate_streamhooks().unwrap();
-    store_auth_token(conn, token.access_token).await;
+    store_auth_token(conn, token.access_token).await?;
 
     Ok(())
 }
