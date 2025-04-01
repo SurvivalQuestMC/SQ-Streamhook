@@ -3,6 +3,7 @@ use std::fmt::Write;
 pub mod auth;
 pub mod cli;
 pub mod database;
+pub mod server;
 // App Data Types
 
 pub enum StreamhookMessage {
