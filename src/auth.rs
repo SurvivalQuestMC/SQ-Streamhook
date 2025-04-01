@@ -1,5 +1,6 @@
 use std::env;
 
+use rand::{distr::Alphanumeric, Rng};
 use reqwest::{Error, header};
 use serde::Deserialize;
 
@@ -22,52 +23,53 @@ fn get_client_info() -> (String, String) {
     )
 }
 
-pub async fn validate_auth_token(conn: &mut sqlx::SqliteConnection) -> anyhow::Result<()> {
-    let auth_token = retrieve_auth_token(conn).await;
-    if let Some(token) = auth_token {
-        let header_auth_string = format!("OAuth {}", token).parse()?;
-
-        println!("Validating Auth Token");
-
-        let mut headers = header::HeaderMap::new();
-        headers.insert("Authorization", header_auth_string);
-
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .unwrap();
-
-        let res = client
-            .get("https://id.twitch.tv/oauth2/validate")
-            .headers(headers)
-            .send()
-            .await?
-            .status();
-
-        if res.is_success() {
-            println!("Auth Token is valid!");
-            return Ok(());
-        };
+pub async fn refresh_streamhook(
+    conn: &mut sqlx::SqliteConnection,
+    client: reqwest::Client,
+) -> anyhow::Result<()> {
+    let res = validate_streamhook(conn, client.clone()).await?;
+    if !res {
+        println!("Auth Token is invalid, generating new token.");
+        let token = authenticate_streamhook(client.clone()).await?;
+        store_auth_token(conn, token.access_token).await?;
     };
-
-    println!("Auth Token is invalid, generating new token.");
-    let token = authenticate_streamhooks().unwrap();
-    store_auth_token(conn, token.access_token).await?;
-
     Ok(())
 }
 
-pub fn authenticate_streamhooks() -> Result<OauthAccessToken, Error> {
-    let mut headers = header::HeaderMap::new();
-    headers.insert(
-        "Content-Type",
-        "application/x-www-form-urlencoded".parse().unwrap(),
-    );
+pub async fn validate_streamhook(
+    conn: &mut sqlx::SqliteConnection,
+    client: reqwest::Client,
+) -> anyhow::Result<bool> {
+    let auth_token = retrieve_auth_token(conn).await;
+    if let None = auth_token {
+        return Ok(false);
+    };
 
-    let client = reqwest::blocking::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap();
+    let header_auth_string = format!("OAuth {}", auth_token.unwrap()).parse()?;
+
+    println!("Validating Auth Token");
+
+    let mut headers = header::HeaderMap::new();
+    headers.insert("Authorization", header_auth_string);
+
+    let res = client
+        .get("https://id.twitch.tv/oauth2/validate")
+        .headers(headers)
+        .send()
+        .await?
+        .status();
+
+    if res.is_success() {
+        println!("Auth Token is valid!");
+        return Ok(true);
+    };
+
+    Ok(false)
+}
+
+pub async fn authenticate_streamhook(client: reqwest::Client) -> anyhow::Result<OauthAccessToken> {
+    let mut headers = header::HeaderMap::new();
+    headers.insert("Content-Type", "application/x-www-form-urlencoded".parse()?);
 
     let (client_id, client_secret) = get_client_info();
 
@@ -78,8 +80,10 @@ pub fn authenticate_streamhooks() -> Result<OauthAccessToken, Error> {
             "client_id={}&client_secret={}&grant_type=client_credentials",
             client_id, client_secret
         ))
-        .send()?
-        .text()?;
+        .send()
+        .await?
+        .text()
+        .await?;
 
     let deserialized: OauthAccessToken = serde_json::from_str(&res[..]).unwrap();
 
@@ -87,6 +91,12 @@ pub fn authenticate_streamhooks() -> Result<OauthAccessToken, Error> {
 }
 
 pub fn authenticate_user() -> Result<OauthAccessToken, Error> {
+    let state: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .map(char::from)
+        .collect();
+
     let auth_code_path = build_url(Url {
         protocol: "https".into(),
         domain: "id.twitch.tv".into(),
@@ -96,7 +106,7 @@ pub fn authenticate_user() -> Result<OauthAccessToken, Error> {
             format!("&client_id={}", env::var(CLIENT_ID).unwrap()),
             "&redirect_uri=http://localhost:3000".into(),
             "&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot".into(),
-            "&state=randomgohere".into(),
+            format!("&state={state}"),
         ]),
     });
 

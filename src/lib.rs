@@ -8,6 +8,7 @@ pub mod database;
 pub enum StreamhookMessage {
     Stop,
     Start,
+    Debug,
 }
 
 pub const CLIENT_ID: &str = "STREAMHOOK_CLIENT_ID";

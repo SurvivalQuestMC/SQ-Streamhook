@@ -10,7 +10,7 @@ pub async fn init_database() -> Result<SqliteConnection, anyhow::Error> {
     Ok(conn)
 }
 
-pub async fn retrieve_database_value(
+async fn retrieve_database_value(
     conn: &mut sqlx::SqliteConnection,
     column: &str,
     table: &str,
@@ -24,7 +24,7 @@ pub async fn retrieve_database_value(
     }
 }
 
-pub async fn store_database_value(
+async fn store_database_value(
     conn: &mut sqlx::SqliteConnection,
     value: String,
     column: &str,
@@ -40,7 +40,7 @@ pub async fn store_database_value(
     Ok(())
 }
 
-pub async fn clear_database_table(
+async fn clear_database_table(
     conn: &mut sqlx::SqliteConnection,
     table: &str,
 ) -> anyhow::Result<()> {
