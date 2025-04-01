@@ -4,7 +4,6 @@ use sq_streamhook::{
     auth::{authenticate_user, refresh_streamhook},
     cli::{Cli, streamhook_parse_args},
     database::init_database,
-    server::receive_connection,
 };
 
 #[tokio::main]
@@ -17,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
 
             streamhook_update()
         }
-        StreamhookMessage::Debug => receive_connection().await?,
+        StreamhookMessage::Debug => (),
     }
 
     Ok(())
@@ -31,7 +30,7 @@ async fn streamhook_init() -> anyhow::Result<()> {
         .build()?;
 
     refresh_streamhook(&mut conn, client).await?;
-    authenticate_user()?;
+    authenticate_user().await?;
     Ok(())
 }
 

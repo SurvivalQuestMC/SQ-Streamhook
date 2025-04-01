@@ -1,12 +1,15 @@
 use std::net::SocketAddr;
 
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
-use hyper::{body::Bytes, server::conn::http1, service::service_fn, Method, Request, Response, StatusCode};
+use http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
+use hyper::{
+    Method, Request, Response, StatusCode, body::Bytes, server::conn::http1, service::service_fn,
+};
 use hyper_util::rt::TokioIo;
-use pathetic::Uri;
 use tokio::net::TcpListener;
 
-pub async fn receive_connection() -> anyhow::Result<()> {
+pub async fn receive_connection(
+    f: fn(Request<hyper::body::Incoming>) -> String,
+) -> anyhow::Result<()> {
     let port = 3000;
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
     let listener = TcpListener::bind(addr).await?;
@@ -17,7 +20,7 @@ pub async fn receive_connection() -> anyhow::Result<()> {
 
         tokio::task::spawn(async move {
             if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(listener_service))
+                .serve_connection(io, service_fn(move |req| listener_service(req, f)))
                 .await
             {
                 eprintln!("Error serving connection: {:?}", err);
@@ -28,19 +31,10 @@ pub async fn receive_connection() -> anyhow::Result<()> {
 
 async fn listener_service(
     req: Request<hyper::body::Incoming>,
+    f: fn(Request<hyper::body::Incoming>) -> String,
 ) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
     match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => {
-            let uri_string = req.uri().to_string();
-            let request_url = Uri::new(&uri_string).unwrap();
-            let params = request_url.query_pairs();
-
-            for (key, value) in params {
-                println!("{key}: {value}");
-            }
-
-            Ok(Response::new(full("Authenticated!")))
-        }
+        (&Method::GET, "/") => Ok(Response::new(full(f(req)))),
         _ => {
             let mut not_found = Response::new(empty());
             *not_found.status_mut() = StatusCode::NOT_FOUND;

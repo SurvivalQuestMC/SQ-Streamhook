@@ -1,12 +1,13 @@
 use std::env;
 
+use hyper::Request;
+use pathetic::Uri;
 use rand::{distr::Alphanumeric, Rng};
-use reqwest::{Error, header};
+use reqwest::header;
 use serde::Deserialize;
 
 use crate::{
-    CLIENT_ID, CLIENT_SECRET, Url, build_url,
-    database::{retrieve_auth_token, store_auth_token},
+    build_url, database::{retrieve_auth_token, store_auth_token}, server::receive_connection, Url, CLIENT_ID, CLIENT_SECRET
 };
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -90,7 +91,7 @@ pub async fn authenticate_streamhook(client: reqwest::Client) -> anyhow::Result<
     Ok(deserialized)
 }
 
-pub fn authenticate_user() -> Result<OauthAccessToken, Error> {
+pub async fn authenticate_user() -> anyhow::Result<OauthAccessToken> {
     let state: String = rand::rng()
         .sample_iter(&Alphanumeric)
         .take(16)
@@ -112,5 +113,19 @@ pub fn authenticate_user() -> Result<OauthAccessToken, Error> {
 
     println!("Authorize Twitch Account");
     println!("{auth_code_path}");
+    receive_connection(get_user_auth_code).await?;
     todo!()
+}
+
+
+fn get_user_auth_code(req: Request<hyper::body::Incoming>) -> String {
+    let uri_string = req.uri().to_string();
+    let request_url = Uri::new(&uri_string).unwrap();
+    let params = request_url.query_pairs();
+
+    for (key, value) in params {
+        println!("{key}: {value}");
+    }
+
+    "Authenticated!".into()
 }
