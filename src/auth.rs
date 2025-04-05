@@ -1,13 +1,19 @@
-use std::env;
+use std::{
+    collections::HashMap,
+    env,
+    sync::{Arc, Mutex},
+};
 
 use hyper::Request;
 use pathetic::Uri;
-use rand::{distr::Alphanumeric, Rng};
+use rand::{Rng, distr::Alphanumeric};
 use reqwest::header;
 use serde::Deserialize;
 
 use crate::{
-    build_url, database::{retrieve_auth_token, store_auth_token}, server::receive_connection, Url, CLIENT_ID, CLIENT_SECRET
+    CLIENT_ID, CLIENT_SECRET, Url, build_url,
+    database::{retrieve_app_auth_token, store_app_auth_token},
+    server::receive_connection,
 };
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
@@ -32,7 +38,7 @@ pub async fn refresh_streamhook(
     if !res {
         println!("Auth Token is invalid, generating new token.");
         let token = authenticate_streamhook(client.clone()).await?;
-        store_auth_token(conn, token.access_token).await?;
+        store_app_auth_token(conn, token.access_token).await?;
     };
     Ok(())
 }
@@ -41,7 +47,7 @@ pub async fn validate_streamhook(
     conn: &mut sqlx::SqliteConnection,
     client: reqwest::Client,
 ) -> anyhow::Result<bool> {
-    let auth_token = retrieve_auth_token(conn).await;
+    let auth_token = retrieve_app_auth_token(conn).await;
     if let None = auth_token {
         return Ok(false);
     };
@@ -113,19 +119,44 @@ pub async fn authenticate_user() -> anyhow::Result<OauthAccessToken> {
 
     println!("Authorize Twitch Account");
     println!("{auth_code_path}");
-    receive_connection(get_user_auth_code).await?;
+    let state_arc = Arc::new(Mutex::new(state.clone()));
+    receive_connection(get_user_auth_code, state_arc.clone()).await?;
+    println!("connection state: {}", state_arc.lock().unwrap());
+    if state == *state_arc.lock().unwrap() {
+        println!("User Auth Rejected Try Again");
+    } else {
+        println!("Use Auth Accepted!");
+    };
+
     todo!()
 }
 
-
-fn get_user_auth_code(req: Request<hyper::body::Incoming>) -> String {
+fn get_user_auth_code(
+    req: Request<hyper::body::Incoming>,
+    state_original: Arc<Mutex<String>>,
+) -> String {
+    let mut state = state_original.lock().unwrap();
     let uri_string = req.uri().to_string();
     let request_url = Uri::new(&uri_string).unwrap();
     let params = request_url.query_pairs();
 
+    let mut params_map: HashMap<String, String> = HashMap::new();
     for (key, value) in params {
+        params_map.insert(key.to_string(), value.to_string());
         println!("{key}: {value}");
     }
 
-    "Authenticated!".into()
+    if params_map.contains_key("code") {
+        if params_map.get("state") != Some(&state) {
+            println!("State:          {state}");
+            println!("Returned State: {}", params_map.get("state").unwrap());
+            return "state value does not match".into();
+        }
+        *state = params_map.get("code").unwrap().to_string();
+        "Authenticated!".into()
+    } else if params_map.contains_key("error") {
+        "Not Authenticated".into()
+    } else {
+        "Stil Not Authenticated".into()
+    }
 }

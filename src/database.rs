@@ -30,7 +30,8 @@ async fn store_database_value(
     column: &str,
     table: &str,
 ) -> anyhow::Result<()> {
-    let query = format!("INSERT INTO {table } ( $2 ) VALUES ( $1 )");
+    let query = format!("INSERT INTO {table } ({column}) VALUES ( $1 )");
+    println!("{query}");
     sqlx::query(&query)
         .bind(value)
         .bind(column)
@@ -50,11 +51,11 @@ async fn clear_database_table(
     Ok(())
 }
 
-pub async fn retrieve_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
+pub async fn retrieve_app_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
     retrieve_database_value(conn, "access_token", "streamhooks_auth").await
 }
 
-pub async fn store_auth_token(
+pub async fn store_app_auth_token(
     conn: &mut sqlx::SqliteConnection,
     auth_token: String,
 ) -> anyhow::Result<()> {
