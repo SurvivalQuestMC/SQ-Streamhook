@@ -1,81 +1,54 @@
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
+use std::{collections::HashMap, time::Duration};
+
+use axum::{
+    Router,
+    extract::{Query, State},
+    routing::get,
 };
+use tokio::sync::mpsc::Sender;
+use tower_http::timeout::TimeoutLayer;
 
-use http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
-use hyper::{
-    Method, Request, Response, StatusCode, body::Bytes, server::conn::http1, service::service_fn,
-};
-use hyper_util::rt::TokioIo;
-use tokio::net::TcpListener;
+pub async fn streamhook_server(state: String) -> String {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(1);
+    let (shutdown_sender, mut shutdown_receiver) = tokio::sync::mpsc::channel::<()>(1);
 
-pub async fn receive_connection(
-    f: fn(Request<hyper::body::Incoming>, Arc<Mutex<String>>) -> String,
-    state_original: Arc<Mutex<String>>,
-) -> anyhow::Result<()> {
-    let port = 3000;
-    let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
-    let listener = TcpListener::bind(addr).await?;
-    let state_value = String::from(state_original.lock().unwrap().as_str());
-    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    let app = Router::new()
+        .route("/", get(authenticate_user))
+        .with_state((state, tx, shutdown_sender))
+        .layer(TimeoutLayer::new(Duration::from_secs(10)));
 
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let io = TokioIo::new(stream);
-        let state = state_original.clone();
-        tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(
-                    io,
-                    service_fn(move |req| listener_service(req, f, state.clone())),
-                )
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            shutdown_receiver.recv().await;
+        })
+        .await
+        .unwrap();
+    let code = rx.recv().await.unwrap();
+    println!("{code}");
+    code
+}
+
+async fn authenticate_user(
+    State((request_state, tx, shutdown)): State<(String, Sender<String>, Sender<()>)>,
+    Query(params): Query<HashMap<String, String>>,
+) {
+    println!("{:#?}", params);
+
+    if params.contains_key("code") {
+        if params.get("state") == Some(&request_state) {
+            tx.send(params.get("code").unwrap().to_string())
                 .await
-            {
-                eprintln!("Error serving connection: {:?}", err);
-            }
-        });
-
-        if state_value != *state_original.lock().unwrap() {
-            break;
+                .unwrap();
+            shutdown.send(()).await.unwrap();
+            println!("There is a code:");
+        } else {
+            println!("The State value is wrong!");
         }
+    } else if params.contains_key("error") {
+        println!("Error, User rejected auth");
+    } else {
+        println!("The Response was not read properly");
     }
-
-    tokio::select! {
-        _ = graceful.shutdown() => {
-            eprintln!("all connections gracefully closed");
-            Ok(())
-        },
-        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
-            eprintln!("timed out wait for all connections to close");
-            Ok(())
-        }
-    }
-}
-
-async fn listener_service(
-    req: Request<hyper::body::Incoming>,
-    f: fn(Request<hyper::body::Incoming>, Arc<Mutex<String>>) -> String,
-    state: Arc<Mutex<String>>,
-) -> anyhow::Result<Response<BoxBody<Bytes, hyper::Error>>> {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => Ok(Response::new(full(f(req, state)))),
-        _ => {
-            let mut not_found = Response::new(empty());
-            *not_found.status_mut() = StatusCode::NOT_FOUND;
-            Ok(not_found)
-        }
-    }
-}
-
-fn empty() -> BoxBody<Bytes, hyper::Error> {
-    Empty::<Bytes>::new()
-        .map_err(|never| match never {})
-        .boxed()
-}
-
-fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
-    Full::new(chunk.into())
-        .map_err(|never| match never {})
-        .boxed()
 }
