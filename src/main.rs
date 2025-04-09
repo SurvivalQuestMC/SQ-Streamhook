@@ -29,8 +29,8 @@ async fn streamhook_init() -> anyhow::Result<()> {
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
 
-    refresh_streamhook(&mut conn, client).await?;
-    authenticate_user().await?;
+    refresh_streamhook(&mut conn, &client).await?;
+    authenticate_user(client).await?;
     Ok(())
 }
 

@@ -26,7 +26,6 @@ pub async fn streamhook_server(state: String) -> String {
         .await
         .unwrap();
     let code = rx.recv().await.unwrap();
-    println!("{code}");
     code
 }
 
@@ -42,13 +41,14 @@ async fn authenticate_user(
                 .await
                 .unwrap();
             shutdown.send(()).await.unwrap();
-            println!("There is a code:");
         } else {
             println!("The State value is wrong!");
+            println!("Expected Value: {}", request_state);
+            println!("Received Value: {}", params.get("state").unwrap());
         }
     } else if params.contains_key("error") {
-        println!("Error, User rejected auth");
+        println!("Error, User rejected auth, Please Try Again");
     } else {
-        println!("The Response was not read properly");
+        println!("Unexpected Result");
     }
 }

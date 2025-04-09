@@ -11,9 +11,18 @@ use crate::{
 };
 
 #[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
-pub struct OauthAccessToken {
+pub struct AppAccessToken {
     pub access_token: String,
     expires_in: u32,
+    token_type: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq, Clone)]
+pub struct UserAccessToken {
+    pub access_token: String,
+    expires_in: u32,
+    refresh_token: String,
+    scope: Vec<String>,
     token_type: String,
 }
 
@@ -26,12 +35,12 @@ fn get_client_info() -> (String, String) {
 
 pub async fn refresh_streamhook(
     conn: &mut sqlx::SqliteConnection,
-    client: reqwest::Client,
+    client: &reqwest::Client,
 ) -> anyhow::Result<()> {
     let res = validate_streamhook(conn, client.clone()).await?;
     if !res {
         println!("Auth Token is invalid, generating new token.");
-        let token = authenticate_streamhook(client.clone()).await?;
+        let token = authenticate_streamhook(&client).await?;
         store_app_auth_token(conn, token.access_token).await?;
     };
     Ok(())
@@ -68,7 +77,7 @@ pub async fn validate_streamhook(
     Ok(false)
 }
 
-pub async fn authenticate_streamhook(client: reqwest::Client) -> anyhow::Result<OauthAccessToken> {
+pub async fn authenticate_streamhook(client: &reqwest::Client) -> anyhow::Result<AppAccessToken> {
     let mut headers = header::HeaderMap::new();
     headers.insert("Content-Type", "application/x-www-form-urlencoded".parse()?);
 
@@ -86,12 +95,17 @@ pub async fn authenticate_streamhook(client: reqwest::Client) -> anyhow::Result<
         .text()
         .await?;
 
-    let deserialized: OauthAccessToken = serde_json::from_str(&res[..]).unwrap();
+    let deserialized: AppAccessToken = serde_json::from_str(&res[..]).unwrap();
 
     Ok(deserialized)
 }
 
-pub async fn authenticate_user() -> anyhow::Result<OauthAccessToken> {
+pub async fn refresh_user(client: reqwest::Client) {
+    let token = authenticate_user(client);
+    todo!();
+}
+
+pub async fn authenticate_user(client: reqwest::Client) -> anyhow::Result<UserAccessToken> {
     let state: String = rand::rng()
         .sample_iter(&Alphanumeric)
         .take(16)
@@ -114,7 +128,26 @@ pub async fn authenticate_user() -> anyhow::Result<OauthAccessToken> {
     println!("Authorize Twitch Account");
     println!("{auth_code_path}");
     let code = streamhook_server(state.clone()).await;
-    println!("connection state: {state}");
-    println!("user access code: {code}");
-    todo!()
+
+    let mut headers = header::HeaderMap::new();
+    headers.insert("Content-Type", "application/x-www-form-urlencoded".parse()?);
+
+    let (client_id, client_secret) = get_client_info();
+
+    let redirect_uri = "http://localhost:3000";
+
+    let res = client
+        .post("https://id.twitch.tv/oauth2/token")
+        .headers(headers)
+        .body(format!(
+            "client_id={client_id}&client_secret={client_secret}&code={code}&grant_type=authorization_code&redirect_uri={redirect_uri}"
+        ))
+        .send()
+        .await?
+        .text()
+        .await?;
+
+    let deserialized: UserAccessToken = serde_json::from_str(&res[..]).unwrap();
+    println!("{deserialized:#?}");
+    Ok(deserialized)
 }
