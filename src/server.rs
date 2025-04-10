@@ -25,8 +25,8 @@ pub async fn streamhook_server(state: String) -> String {
         })
         .await
         .unwrap();
-    let code = rx.recv().await.unwrap();
-    code
+
+    rx.recv().await.unwrap()
 }
 
 async fn authenticate_user(

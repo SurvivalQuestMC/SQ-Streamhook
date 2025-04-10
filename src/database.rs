@@ -24,23 +24,6 @@ async fn retrieve_database_value(
     }
 }
 
-async fn store_database_value(
-    conn: &mut sqlx::SqliteConnection,
-    value: String,
-    column: &str,
-    table: &str,
-) -> anyhow::Result<()> {
-    let query = format!("INSERT INTO {table } ({column}) VALUES ( $1 )");
-    println!("{query}");
-    sqlx::query(&query)
-        .bind(value)
-        .bind(column)
-        .execute(conn)
-        .await?;
-
-    Ok(())
-}
-
 async fn clear_database_table(
     conn: &mut sqlx::SqliteConnection,
     table: &str,
@@ -51,20 +34,69 @@ async fn clear_database_table(
     Ok(())
 }
 
+async fn store_app_database_value(
+    conn: &mut sqlx::SqliteConnection,
+    access_token: String,
+) -> anyhow::Result<()> {
+    let query = "INSERT INTO streamhooks_app_auth (access_token) VALUES ( $1 )";
+    sqlx::query(query).bind(access_token).execute(conn).await?;
+
+    Ok(())
+}
+
+async fn store_user_database_value(
+    conn: &mut sqlx::SqliteConnection,
+    access_token: String,
+    refresh_token: String,
+) -> anyhow::Result<()> {
+    let query = "INSERT INTO streamhooks_user_auth (access_token, refresh_token) VALUES ( $1, $2 )";
+    sqlx::query(query)
+        .bind(access_token)
+        .bind(refresh_token)
+        .execute(conn)
+        .await?;
+
+    Ok(())
+}
+
 pub async fn retrieve_app_auth_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
-    retrieve_database_value(conn, "access_token", "streamhooks_auth").await
+    retrieve_database_value(conn, "access_token", "streamhooks_app_auth").await
 }
 
 pub async fn store_app_auth_token(
     conn: &mut sqlx::SqliteConnection,
-    auth_token: String,
+    access_token: String,
 ) -> anyhow::Result<()> {
     println!("Clearing previous key..");
-    clear_database_table(conn, "streamhooks_auth").await?;
+    clear_database_table(conn, "streamhooks_app_auth").await?;
     println!("Previous key cleared!");
 
     println!("Inserting into database!");
-    store_database_value(conn, auth_token, "access_token", "streamhooks_auth").await?;
+    store_app_database_value(conn, access_token).await?;
+    println!("Succesfully inserted!");
+
+    Ok(())
+}
+
+pub async fn retrieve_user_access_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
+    retrieve_database_value(conn, "access_token", "streamhooks_user_auth").await
+}
+
+pub async fn retrieve_user_refresh_token(conn: &mut sqlx::SqliteConnection) -> Option<String> {
+    retrieve_database_value(conn, "refresh_token", "streamhooks_user_auth").await
+}
+
+pub async fn store_user_auth_tokens(
+    conn: &mut sqlx::SqliteConnection,
+    access_token: String,
+    refresh_token: String,
+) -> anyhow::Result<()> {
+    println!("Clearing previous key..");
+    clear_database_table(conn, "streamhooks_user_auth").await?;
+    println!("Previous key cleared!");
+
+    println!("Inserting into database!");
+    store_user_database_value(conn, access_token, refresh_token).await?;
     println!("Succesfully inserted!");
 
     Ok(())

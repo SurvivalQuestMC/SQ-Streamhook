@@ -1,7 +1,7 @@
 use clap::Parser;
 use sq_streamhook::{
     StreamhookMessage,
-    auth::{authenticate_user, refresh_streamhook},
+    auth::{refresh_streamhook, refresh_user},
     cli::{Cli, streamhook_parse_args},
     database::init_database,
 };
@@ -30,7 +30,7 @@ async fn streamhook_init() -> anyhow::Result<()> {
         .build()?;
 
     refresh_streamhook(&mut conn, &client).await?;
-    authenticate_user(client).await?;
+    refresh_user(&mut conn, client).await?;
     Ok(())
 }
 
