@@ -105,7 +105,7 @@ async fn authenticate_streamhook(client: &reqwest::Client) -> anyhow::Result<App
 
 pub async fn refresh_user(
     conn: &mut sqlx::SqliteConnection,
-    client: reqwest::Client,
+    client: &reqwest::Client,
 ) -> anyhow::Result<()> {
     let res = validate_user(conn, &client).await?;
     if !res {
@@ -196,7 +196,7 @@ async fn authenticate_user(client: &reqwest::Client) -> anyhow::Result<UserAcces
             "?response_type=code".into(),
             format!("&client_id={}", env::var(CLIENT_ID).unwrap()),
             "&redirect_uri=http://localhost:3000".into(),
-            "&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot".into(),
+            "&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot+moderator%3Aread%3Achatters".into(),
             format!("&state={state}"),
         ]),
     });

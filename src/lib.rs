@@ -4,12 +4,12 @@ pub mod auth;
 pub mod cli;
 pub mod database;
 pub mod server;
+pub mod twitch_api;
 // App Data Types
 
 pub enum StreamhookMessage {
-    Stop,
+    Streamer,
     Start,
-    Debug,
 }
 
 pub const CLIENT_ID: &str = "STREAMHOOK_CLIENT_ID";

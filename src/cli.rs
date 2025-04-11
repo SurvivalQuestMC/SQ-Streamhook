@@ -22,9 +22,7 @@ enum Commands {
         command: StreamerCommands,
     },
     /// Start Streamhook
-    Start,
-    // Listen to port 3000
-    Listen,
+    Start
 }
 
 #[derive(Subcommand, Debug)]
@@ -42,12 +40,9 @@ pub fn streamhook_parse_args(cli: Cli) -> StreamhookMessage {
     match cli.command {
         Streamer {command} => { 
             parse_streamer_args(command);
-            StreamhookMessage::Stop
+            StreamhookMessage::Streamer
         },
         Start => StreamhookMessage::Start,
-        Listen => {
-            StreamhookMessage::Debug
-        },
     }
 }
 
