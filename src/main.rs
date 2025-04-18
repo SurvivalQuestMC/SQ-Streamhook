@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use clap::Parser;
 use sq_streamhook::{
-    StreamhookMessage,
+    StreamhookApp, StreamhookMessage,
     auth::{refresh_streamhook, refresh_user},
     cli::{Cli, streamhook_parse_args},
+    config::streamhook_config,
     database::init_database,
     twitch_api::helix_get_chatters,
 };
@@ -16,39 +17,40 @@ async fn main() -> anyhow::Result<()> {
     match streamhook_parse_args(args) {
         StreamhookMessage::Streamer => (),
         StreamhookMessage::Start => {
-            let mut conn = init_database().await?;
-            let client = reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()?;
+            let mut app = streamhook_init().await?;
 
-            streamhook_init(&mut conn, &client).await?;
-
-            streamhook_update(&mut conn, &client).await?;
+            streamhook_update(&mut app).await?;
         }
     };
 
     Ok(())
 }
 
-async fn streamhook_init(
-    conn: &mut sqlx::SqliteConnection,
-    client: &reqwest::Client,
-) -> anyhow::Result<()> {
+async fn streamhook_init() -> anyhow::Result<StreamhookApp> {
     dotenvy::from_filename(".env").ok();
+    let config = streamhook_config()?;
+    let conn = init_database().await?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
 
-    refresh_streamhook(conn, client).await?;
-    refresh_user(conn, client).await?;
-    Ok(())
+    let mut app = StreamhookApp {
+        config,
+        conn,
+        client,
+    };
+
+    refresh_streamhook(&mut app).await?;
+    refresh_user(&mut app).await?;
+
+    Ok(app)
 }
 
-async fn streamhook_update(
-    conn: &mut sqlx::SqliteConnection,
-    client: &reqwest::Client,
-) -> anyhow::Result<()> {
+async fn streamhook_update(app: &mut StreamhookApp) -> anyhow::Result<()> {
     let mut interval = time::interval(Duration::from_secs(60 * 10));
     loop {
         interval.tick().await;
-        helix_get_chatters(conn, client).await?;
+        helix_get_chatters(app).await?;
         println!("Its been 10 minutes");
         break;
     }

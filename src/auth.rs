@@ -5,7 +5,7 @@ use reqwest::header;
 use serde::Deserialize;
 
 use crate::{
-    CLIENT_ID, CLIENT_SECRET, Url, build_url,
+    CLIENT_ID, CLIENT_SECRET, StreamhookApp, Url, build_url,
     database::{
         retrieve_app_auth_token, retrieve_user_access_token, retrieve_user_refresh_token,
         store_app_auth_token, store_user_auth_tokens,
@@ -36,22 +36,19 @@ fn get_client_info() -> (String, String) {
     )
 }
 
-pub async fn refresh_streamhook(
-    conn: &mut sqlx::SqliteConnection,
-    client: &reqwest::Client,
-) -> anyhow::Result<()> {
-    let res = validate_streamhook(conn, client.clone()).await?;
+pub async fn refresh_streamhook(app: &mut StreamhookApp) -> anyhow::Result<()> {
+    let res = validate_streamhook(&mut app.conn, &app.client).await?;
     if !res {
         println!("Auth Token is invalid, generating new token.");
-        let token = authenticate_streamhook(client).await?;
-        store_app_auth_token(conn, token.access_token).await?;
+        let token = authenticate_streamhook(&app.client).await?;
+        store_app_auth_token(&mut app.conn, token.access_token).await?;
     };
     Ok(())
 }
 
 pub async fn validate_streamhook(
     conn: &mut sqlx::SqliteConnection,
-    client: reqwest::Client,
+    client: &reqwest::Client,
 ) -> anyhow::Result<bool> {
     let auth_token = retrieve_app_auth_token(conn).await;
     if auth_token.is_none() {
@@ -103,20 +100,17 @@ async fn authenticate_streamhook(client: &reqwest::Client) -> anyhow::Result<App
     Ok(deserialized)
 }
 
-pub async fn refresh_user(
-    conn: &mut sqlx::SqliteConnection,
-    client: &reqwest::Client,
-) -> anyhow::Result<()> {
-    let res = validate_user(conn, &client).await?;
+pub async fn refresh_user(app: &mut StreamhookApp) -> anyhow::Result<()> {
+    let res = validate_user(&mut app.conn, &app.client).await?;
     if !res {
         println!("User Token is invalid, generating new one");
-        let mut token = authenticate_user_refresh_token(conn, &client).await?;
+        let mut token = authenticate_user_refresh_token(&mut app.conn, &app.client).await?;
         if token.is_none() {
             println!("Refresh Token is invalid, please reauthenticate the chat bot");
-            token = Some(authenticate_user(&client).await?);
+            token = Some(authenticate_user(&app.client).await?);
         }
         let token = token.unwrap();
-        store_user_auth_tokens(conn, token.access_token, token.refresh_token).await?;
+        store_user_auth_tokens(&mut app.conn, token.access_token, token.refresh_token).await?;
     }
     Ok(())
 }
@@ -196,7 +190,8 @@ async fn authenticate_user(client: &reqwest::Client) -> anyhow::Result<UserAcces
             "?response_type=code".into(),
             format!("&client_id={}", env::var(CLIENT_ID).unwrap()),
             "&redirect_uri=http://localhost:3000".into(),
-            "&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot+moderator%3Aread%3Achatters".into(),
+            "&scope=user%3Aread%3Achat+user%3Awrite%3Achat+user%3Abot+moderator%3Aread%3Achatters"
+                .into(),
             format!("&state={state}"),
         ]),
     });

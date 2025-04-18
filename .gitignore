@@ -21,5 +21,6 @@ Cargo.lock
 #.idea/target
 .bacon-locations
 .env
+config.yml
 
 *.db

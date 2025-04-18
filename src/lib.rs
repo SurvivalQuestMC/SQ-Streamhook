@@ -1,11 +1,20 @@
 use std::fmt::Write;
 
+use config::StreamhookConfig;
+
 pub mod auth;
 pub mod cli;
+pub mod config;
 pub mod database;
 pub mod server;
 pub mod twitch_api;
 // App Data Types
+
+pub struct StreamhookApp {
+    pub config: StreamhookConfig,
+    pub conn: sqlx::SqliteConnection,
+    pub client: reqwest::Client
+}
 
 pub enum StreamhookMessage {
     Streamer,
