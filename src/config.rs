@@ -1,12 +1,14 @@
 use std::{
     fs::{self, File},
     io::Write,
-    sync::OnceLock,
+    sync::{Mutex, MutexGuard, OnceLock},
 };
 
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug)]
+static CONFIG: OnceLock<Mutex<StreamhookConfig>> = OnceLock::new();
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct StreamhookConfig {
     version: u8,
     mod_account: String,
@@ -25,17 +27,30 @@ impl Default for StreamhookConfig {
         let config_values: Self =
             serde_yml::from_reader(config_file).expect("Could not parse config");
 
+        if config_values.version != 1 {
+            panic!("Wrong Config Version Used");
+        }
+
         config_values
     }
 }
 
 impl StreamhookConfig {
-    pub fn get<'a>() -> &'a Self {
-        static CONFIG: OnceLock<StreamhookConfig> = OnceLock::new();
-        CONFIG.get_or_init(|| Self::default())
+ 
+    fn get<'a>() -> &'a Mutex<Self> {
+        CONFIG.get_or_init(|| Self::default().into())
     }
 
-    pub fn get_mod_account() -> &'static String {
-        &Self::get().mod_account
+    pub fn reload() {
+        let mut config = Self::get().lock().unwrap();
+        *config = StreamhookConfig::default();
+    }
+
+    pub fn get_config() -> MutexGuard<'static, StreamhookConfig> {
+        Self::get().lock().unwrap()
+    }
+
+    pub fn get_mod_account() -> String {
+        Self::get().lock().unwrap().mod_account.to_string()
     }
 }

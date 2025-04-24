@@ -5,7 +5,6 @@ use sq_streamhook::{
     StreamhookApp, StreamhookMessage,
     auth::{refresh_streamhook, refresh_user},
     cli::{Cli, streamhook_parse_args},
-    config::StreamhookConfig,
     database::init_database,
     twitch_api::helix_get_chatters,
 };
@@ -45,12 +44,11 @@ async fn streamhook_init() -> anyhow::Result<StreamhookApp> {
 }
 
 async fn streamhook_update(app: &mut StreamhookApp) -> anyhow::Result<()> {
-    let mut interval = time::interval(Duration::from_secs(60 * 10));
+    let mut interval = time::interval(Duration::from_secs(10 * 60));
     loop {
         interval.tick().await;
         helix_get_chatters(app).await?;
-        println!("Its been 10 minutes");
-        break;
+        //break;
     }
     Ok(())
 }

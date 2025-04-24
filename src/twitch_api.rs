@@ -16,9 +16,9 @@ pub async fn helix_get_chatters(app: &mut StreamhookApp) -> anyhow::Result<()> {
     headers.insert("Authorization", header_auth_string);
     headers.insert("Client-ID", client_id.parse()?);
 
-    let mod_name = StreamhookConfig::get_mod_account().as_str();
+    let mod_name = StreamhookConfig::get_mod_account();
 
-    let moderator_id = helix_get_user_id(app, mod_name.to_string()).await?;
+    let moderator_id = helix_get_user_id(app, mod_name).await?;
     let broadcaster_id = moderator_id.clone();
 
     let res = app.client
