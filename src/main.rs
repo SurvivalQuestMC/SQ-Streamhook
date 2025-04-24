@@ -5,7 +5,7 @@ use sq_streamhook::{
     StreamhookApp, StreamhookMessage,
     auth::{refresh_streamhook, refresh_user},
     cli::{Cli, streamhook_parse_args},
-    config::streamhook_config,
+    config::StreamhookConfig,
     database::init_database,
     twitch_api::helix_get_chatters,
 };
@@ -28,14 +28,12 @@ async fn main() -> anyhow::Result<()> {
 
 async fn streamhook_init() -> anyhow::Result<StreamhookApp> {
     dotenvy::from_filename(".env").ok();
-    let config = streamhook_config()?;
     let conn = init_database().await?;
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
 
     let mut app = StreamhookApp {
-        config,
         conn,
         client,
     };

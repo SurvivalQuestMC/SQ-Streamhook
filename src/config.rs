@@ -1,7 +1,7 @@
 use std::{
-    collections::HashMap,
     fs::{self, File},
     io::Write,
+    sync::OnceLock,
 };
 
 use serde::Deserialize;
@@ -9,30 +9,33 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 pub struct StreamhookConfig {
     version: u8,
-    twitch_bot_account_name: String,
-    universal_drops: HashMap<String, StreamDrop>,
+    mod_account: String,
+    streamers: Vec<String>,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct StreamDrop {
-    name: String,
+impl Default for StreamhookConfig {
+    fn default() -> Self {
+        if fs::exists("config.yml").is_err() {
+            let sample = include_bytes!("../config.sample.yml");
+            let mut config = File::create("config.yml").unwrap();
+            config.write_all(sample).unwrap();
+        }
+
+        let config_file = File::open("config.yml").unwrap();
+        let config_values: Self =
+            serde_yml::from_reader(config_file).expect("Could not parse config");
+
+        config_values
+    }
 }
 
 impl StreamhookConfig {
-    pub fn get_bot_account_name(&self) -> &String {
-        &self.twitch_bot_account_name
-    }
-}
-
-pub fn streamhook_config() -> anyhow::Result<StreamhookConfig> {
-    if fs::exists("config.yml").is_err() {
-        let sample = include_bytes!("../config.sample.yml");
-        let mut config = File::create("config.yml")?;
-        config.write_all(sample)?;
+    pub fn get<'a>() -> &'a Self {
+        static CONFIG: OnceLock<StreamhookConfig> = OnceLock::new();
+        CONFIG.get_or_init(|| Self::default())
     }
 
-    let config_file = File::open("config.yml")?;
-    let config_values: StreamhookConfig = serde_yml::from_reader(config_file)?;
-    
-    Ok(config_values)
+    pub fn get_mod_account() -> &'static String {
+        &Self::get().mod_account
+    }
 }

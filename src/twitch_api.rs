@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::env;
 
 use crate::{
-    CLIENT_ID, StreamhookApp, database::retrieve_user_access_token,
+    CLIENT_ID, StreamhookApp, config::StreamhookConfig, database::retrieve_user_access_token,
 };
 
 pub async fn helix_get_chatters(app: &mut StreamhookApp) -> anyhow::Result<()> {
@@ -16,9 +16,9 @@ pub async fn helix_get_chatters(app: &mut StreamhookApp) -> anyhow::Result<()> {
     headers.insert("Authorization", header_auth_string);
     headers.insert("Client-ID", client_id.parse()?);
 
-    let user_name = app.config.get_bot_account_name().as_str();
-    
-    let moderator_id = helix_get_user_id(app, user_name.to_string()).await?;
+    let mod_name = StreamhookConfig::get_mod_account().as_str();
+
+    let moderator_id = helix_get_user_id(app, mod_name.to_string()).await?;
     let broadcaster_id = moderator_id.clone();
 
     let res = app.client
@@ -53,9 +53,7 @@ pub async fn helix_get_user_id(app: &mut StreamhookApp, user: String) -> anyhow:
 
     let res = app
         .client
-        .get(format!(
-            "https://api.twitch.tv/helix/users?login_id={user}"
-        ))
+        .get(format!("https://api.twitch.tv/helix/users?login_id={user}"))
         .headers(headers)
         .send()
         .await?

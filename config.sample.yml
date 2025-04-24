@@ -1,5 +1,3 @@
 version: 1
-twitch_bot_account_name: "YourNameHere"
-universal_drops:
-  drop0:
-    name: "Fireworks"  
+mod_account: "YourNameHere"
+streamers: []
